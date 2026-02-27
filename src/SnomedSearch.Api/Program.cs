@@ -19,9 +19,9 @@ builder.Services.AddSwaggerGen();
 // Configure SNOMED Repository
 string host = Environment.GetEnvironmentVariable("SNOMED_DB_HOST") ?? "localhost";
 string port = Environment.GetEnvironmentVariable("SNOMED_DB_PORT") ?? "5433";
-string db = Environment.GetEnvironmentVariable("SNOMED_DB_NAME") ?? "niramoy";
-string user = Environment.GetEnvironmentVariable("SNOMED_DB_USER") ?? "niramoy";
-string pass = Environment.GetEnvironmentVariable("SNOMED_DB_PASSWORD") ?? "niramoy";
+string db = Environment.GetEnvironmentVariable("SNOMED_DB_NAME") ?? "****";
+string user = Environment.GetEnvironmentVariable("SNOMED_DB_USER") ?? "***";
+string pass = Environment.GetEnvironmentVariable("SNOMED_DB_PASSWORD") ?? "***";
 
 string connString = $"Host={host};Port={port};Database={db};Username={user};Password={pass};";
 
