@@ -13,3 +13,4 @@
 /Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Infrastructure/obj/Debug/net10.0/refint/SnomedSearch.Infrastructure.dll
 /Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Infrastructure/obj/Debug/net10.0/SnomedSearch.Infrastructure.pdb
 /Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Infrastructure/obj/Debug/net10.0/ref/SnomedSearch.Infrastructure.dll
+/Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Infrastructure/obj/Debug/net10.0/SnomedSearch.Infrastructure.sourcelink.json

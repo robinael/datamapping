@@ -9,3 +9,4 @@
 /Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Core/obj/Debug/net10.0/refint/SnomedSearch.Core.dll
 /Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Core/obj/Debug/net10.0/SnomedSearch.Core.pdb
 /Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Core/obj/Debug/net10.0/ref/SnomedSearch.Core.dll
+/Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Core/obj/Debug/net10.0/SnomedSearch.Core.sourcelink.json

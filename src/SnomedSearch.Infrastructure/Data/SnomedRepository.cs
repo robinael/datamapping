@@ -1,9 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
-using System.Threading.Tasks;
-using Dapper;
+using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using SnomedSearch.Core.Entities;
 using SnomedSearch.Core.Interfaces;
@@ -12,24 +7,13 @@ namespace SnomedSearch.Infrastructure.Data
 {
     public class SnomedRepository : ISnomedRepository
     {
-        private readonly string _connectionString;
-        private IDbConnection _connection;
+        private readonly SnomedDbContext _dbContext;
         private readonly IAIService _aiService;
 
-        public SnomedRepository(string connectionString, IAIService aiService = null)
+        public SnomedRepository(SnomedDbContext dbContext, IAIService aiService = null)
         {
-            _connectionString = connectionString;
+            _dbContext = dbContext;
             _aiService = aiService;
-        }
-
-        private IDbConnection GetConnection()
-        {
-            if (_connection == null || _connection.State == ConnectionState.Closed)
-            {
-                _connection = new NpgsqlConnection(_connectionString);
-                _connection.Open();
-            }
-            return _connection;
         }
 
         public async Task<List<ConceptSummary>> SearchChiefComplaintsAsync(
@@ -72,15 +56,20 @@ namespace SnomedSearch.Infrastructure.Data
             int limit)
         {
             var wordConditions = string.Join(" AND ", words.Select((w, i) => $"d.term ILIKE @word{i}"));
-            var parameters = new DynamicParameters();
-            parameters.Add("query", query);
-            parameters.Add("queryPrefix", $"{query}%");
-            parameters.Add("semanticTags", semanticTags);
-            parameters.Add("limit", limit);
+            
+            // Map @ parameters to {n} for EF Core SqlQueryRaw or use NpgsqlParameter
+            // For simplicity and to avoid positional errors with the dynamic word conditions,
+            // I'll use NpgsqlParameter objects.
+            
+            var npgsqlParams = new List<NpgsqlParameter>();
+            npgsqlParams.Add(new NpgsqlParameter("query", query));
+            npgsqlParams.Add(new NpgsqlParameter("queryPrefix", $"{query}%"));
+            npgsqlParams.Add(new NpgsqlParameter("semanticTags", semanticTags.ToArray()));
+            npgsqlParams.Add(new NpgsqlParameter("limit", limit));
 
             for (int i = 0; i < words.Count; i++)
             {
-                parameters.Add($"word{i}", $"%{words[i]}%");
+                npgsqlParams.Add(new NpgsqlParameter($"word{i}", $"%{words[i]}%"));
             }
 
             string sql = $@"
@@ -117,19 +106,27 @@ namespace SnomedSearch.Infrastructure.Data
             )
             SELECT
                 rc.concept_id AS ConceptId,
-                rc.matched_term AS PreferredTerm,
+                COALESCE(
+                    (SELECT term FROM snomed.description 
+                     WHERE concept_id = rc.concept_id 
+                       AND active = true 
+                       AND type_id = 900000000000013009 
+                     ORDER BY LENGTH(term) ASC LIMIT 1),
+                    rc.matched_term
+                ) AS PreferredTerm,
                 rc.semantic_tag AS SemanticTag,
-                (SELECT COUNT(*)
+                (SELECT COUNT(*) AS ""Value""
                  FROM snomed.relationship r
                  WHERE r.destination_id = rc.concept_id
                    AND r.type_id = 116680003
                    AND r.active = true) AS ChildrenCount
             FROM ranked_concepts rc
             ORDER BY rc.match_rank, rc.term_length, rc.matched_term
-            LIMIT @limit;";
+            LIMIT @limit";
 
-            var conn = GetConnection();
-            return (await conn.QueryAsync<ConceptSummary>(sql, parameters)).ToList();
+            return await _dbContext.Database
+                .SqlQueryRaw<ConceptSummary>(sql, npgsqlParams.ToArray())
+                .ToListAsync();
         }
 
         private async Task<List<ConceptSummary>> SearchFuzzyAsync(
@@ -169,20 +166,34 @@ namespace SnomedSearch.Infrastructure.Data
             )
             SELECT
                 rc.concept_id AS ConceptId,
-                rc.matched_term AS PreferredTerm,
+                COALESCE(
+                    (SELECT term FROM snomed.description 
+                     WHERE concept_id = rc.concept_id 
+                       AND active = true 
+                       AND type_id = 900000000000013009 
+                     ORDER BY LENGTH(term) ASC LIMIT 1),
+                    rc.matched_term
+                ) AS PreferredTerm,
                 rc.semantic_tag AS SemanticTag,
-                (SELECT COUNT(*)
+                (SELECT COUNT(*) AS ""Value""
                  FROM snomed.relationship r
                  WHERE r.destination_id = rc.concept_id
                    AND r.type_id = 116680003
                    AND r.active = true) AS ChildrenCount
             FROM ranked_concepts rc
             ORDER BY rc.sim_score DESC, rc.term_length, rc.matched_term
-            LIMIT @limit;";
+            LIMIT @limit";
 
-            var parameters = new { query, semanticTags, minSimilarity, limit };
-            var conn = GetConnection();
-            return (await conn.QueryAsync<ConceptSummary>(sql, parameters)).ToList();
+            var npgsqlParams = new[] {
+                new NpgsqlParameter("query", query),
+                new NpgsqlParameter("semanticTags", semanticTags.ToArray()),
+                new NpgsqlParameter("minSimilarity", minSimilarity),
+                new NpgsqlParameter("limit", limit)
+            };
+
+            return await _dbContext.Database
+                .SqlQueryRaw<ConceptSummary>(sql, npgsqlParams)
+                .ToListAsync();
         }
 
         private async Task<List<ConceptSummary>> SearchSemanticAsync(
@@ -214,145 +225,130 @@ namespace SnomedSearch.Infrastructure.Data
 
         public async Task<Concept> GetConceptDetailsAsync(long conceptId)
         {
-            var sql = @"
-            SELECT
-                c.concept_id AS ConceptId,
-                c.active AS Active,
-                st.fully_specified_name AS Fsn,
-                st.semantic_tag AS SemanticTag
-            FROM snomed.concept c
-            LEFT JOIN snomed.semantic_tag st ON c.concept_id = st.concept_id
-            WHERE c.concept_id = @conceptId AND c.active = true;";
-
-            var conn = GetConnection();
-            var concept = await conn.QueryFirstOrDefaultAsync<Concept>(sql, new { conceptId });
+            var concept = await _dbContext.Concepts
+                .Where(c => c.ConceptId == conceptId && c.Active)
+                .Select(c => new Concept
+                {
+                    ConceptId = c.ConceptId,
+                    Active = c.Active,
+                    // These will be filled below
+                })
+                .FirstOrDefaultAsync();
 
             if (concept == null) return null;
+
+            var tagInfo = await _dbContext.SemanticTags
+                .FirstOrDefaultAsync(st => st.ConceptId == conceptId);
+            
+            concept.Fsn = tagInfo?.FullySpecifiedName;
+            concept.SemanticTag = tagInfo?.SemanticTag;
 
             concept.Synonyms = await GetSynonymsAsync(conceptId);
             concept.PreferredTerm = concept.Synonyms.FirstOrDefault() ?? concept.Fsn;
 
-            var defSql = @"
-            SELECT term FROM snomed.text_definition
-            WHERE concept_id = @conceptId AND active = true
-            LIMIT 1;";
-            concept.Definition = await conn.QueryFirstOrDefaultAsync<string>(defSql, new { conceptId });
+            concept.Definition = await _dbContext.TextDefinitions
+                .Where(td => td.ConceptId == conceptId && td.Active)
+                .Select(td => td.Term)
+                .FirstOrDefaultAsync();
 
             var parentsResult = await GetParentsAsync(conceptId);
             concept.Parents = parentsResult.Items;
 
-            var childrenSql = @"
-            SELECT COUNT(*) FROM snomed.relationship
-            WHERE destination_id = @conceptId AND type_id = 116680003 AND active = true;";
-            concept.ChildrenCount = await conn.ExecuteScalarAsync<int>(childrenSql, new { conceptId });
+            concept.ChildrenCount = (int)await _dbContext.Relationships
+                .CountAsync(r => r.DestinationId == conceptId && r.TypeId == 116680003 && r.Active);
 
             return concept;
         }
 
         public async Task<HierarchyResponse> GetChildrenAsync(long conceptId, int limit = 50)
         {
-            var conn = GetConnection();
-            var parentTermSql = @"
-            SELECT d.term FROM snomed.description d
-            WHERE d.concept_id = @conceptId
-              AND d.type_id = 900000000000013009
-              AND d.active = true
-            LIMIT 1;";
-            var parentTerm = await conn.QueryFirstOrDefaultAsync<string>(parentTermSql, new { conceptId }) ?? conceptId.ToString();
+            var parentTerm = await _dbContext.Descriptions
+                .Where(d => d.ConceptId == conceptId && d.TypeId == 900000000000013009 && d.Active)
+                .Select(d => d.Term)
+                .FirstOrDefaultAsync() ?? conceptId.ToString();
 
-            var sql = @"
-            SELECT
-                c.concept_id AS ConceptId,
-                (SELECT d.term FROM snomed.description d
-                 WHERE d.concept_id = c.concept_id
-                   AND d.type_id = 900000000000013009
-                   AND d.active = true
-                 LIMIT 1) AS PreferredTerm,
-                st.semantic_tag AS SemanticTag,
-                (SELECT COUNT(*) FROM snomed.relationship r2
-                 WHERE r2.destination_id = c.concept_id
-                   AND r2.type_id = 116680003
-                   AND r2.active = true) AS ChildrenCount
-            FROM snomed.relationship r
-            JOIN snomed.concept c ON r.source_id = c.concept_id
-            LEFT JOIN snomed.semantic_tag st ON c.concept_id = st.concept_id
-            WHERE r.destination_id = @conceptId
-              AND r.type_id = 116680003
-              AND r.active = true
-              AND c.active = true
-            ORDER BY PreferredTerm
-            LIMIT @limit;";
+            var items = await _dbContext.Relationships
+                .Where(r => r.DestinationId == conceptId && r.TypeId == 116680003 && r.Active)
+                .Join(_dbContext.Concepts.Where(c => c.Active),
+                    r => r.SourceId,
+                    c => c.ConceptId,
+                    (r, c) => c)
+                .Select(c => new ConceptSummary
+                {
+                    ConceptId = c.ConceptId,
+                    PreferredTerm = _dbContext.Descriptions
+                        .Where(d => d.ConceptId == c.ConceptId && d.TypeId == 900000000000013009 && d.Active)
+                        .Select(d => d.Term)
+                        .FirstOrDefault(),
+                    SemanticTag = _dbContext.SemanticTags
+                        .Where(st => st.ConceptId == c.ConceptId)
+                        .Select(st => st.SemanticTag)
+                        .FirstOrDefault(),
+                    ChildrenCount = _dbContext.Relationships
+                        .Count(r2 => r2.DestinationId == c.ConceptId && r2.TypeId == 116680003 && r2.Active)
+                })
+                .OrderBy(i => i.PreferredTerm)
+                .Take(limit)
+                .ToListAsync();
 
-            var items = (await conn.QueryAsync<ConceptSummary>(sql, new { conceptId, limit })).ToList();
             return new HierarchyResponse { ConceptId = conceptId, PreferredTerm = parentTerm, Items = items };
         }
 
         public async Task<HierarchyResponse> GetParentsAsync(long conceptId)
         {
-            var conn = GetConnection();
-            var childTermSql = @"
-            SELECT d.term FROM snomed.description d
-            WHERE d.concept_id = @conceptId
-              AND d.type_id = 900000000000013009
-              AND d.active = true
-            LIMIT 1;";
-            var childTerm = await conn.QueryFirstOrDefaultAsync<string>(childTermSql, new { conceptId }) ?? conceptId.ToString();
+            var childTerm = await _dbContext.Descriptions
+                .Where(d => d.ConceptId == conceptId && d.TypeId == 900000000000013009 && d.Active)
+                .Select(d => d.Term)
+                .FirstOrDefaultAsync() ?? conceptId.ToString();
 
-            var sql = @"
-            SELECT
-                c.concept_id AS ConceptId,
-                (SELECT d.term FROM snomed.description d
-                 WHERE d.concept_id = c.concept_id
-                   AND d.type_id = 900000000000013009
-                   AND d.active = true
-                 LIMIT 1) AS PreferredTerm,
-                st.semantic_tag AS SemanticTag,
-                (SELECT COUNT(*) FROM snomed.relationship r2
-                 WHERE r2.destination_id = c.concept_id
-                   AND r2.type_id = 116680003
-                   AND r2.active = true) AS ChildrenCount
-            FROM snomed.relationship r
-            JOIN snomed.concept c ON r.destination_id = c.concept_id
-            LEFT JOIN snomed.semantic_tag st ON c.concept_id = st.concept_id
-            WHERE r.source_id = @conceptId
-              AND r.type_id = 116680003
-              AND r.active = true
-              AND c.active = true
-            ORDER BY PreferredTerm;";
+            var items = await _dbContext.Relationships
+                .Where(r => r.SourceId == conceptId && r.TypeId == 116680003 && r.Active)
+                .Join(_dbContext.Concepts.Where(c => c.Active),
+                    r => r.DestinationId,
+                    c => c.ConceptId,
+                    (r, c) => c)
+                .Select(c => new ConceptSummary
+                {
+                    ConceptId = c.ConceptId,
+                    PreferredTerm = _dbContext.Descriptions
+                        .Where(d => d.ConceptId == c.ConceptId && d.TypeId == 900000000000013009 && d.Active)
+                        .Select(d => d.Term)
+                        .FirstOrDefault(),
+                    SemanticTag = _dbContext.SemanticTags
+                        .Where(st => st.ConceptId == c.ConceptId)
+                        .Select(st => st.SemanticTag)
+                        .FirstOrDefault(),
+                    ChildrenCount = _dbContext.Relationships
+                        .Count(r2 => r2.DestinationId == c.ConceptId && r2.TypeId == 116680003 && r2.Active)
+                })
+                .OrderBy(i => i.PreferredTerm)
+                .ToListAsync();
 
-            var items = (await conn.QueryAsync<ConceptSummary>(sql, new { conceptId })).ToList();
             return new HierarchyResponse { ConceptId = conceptId, PreferredTerm = childTerm, Items = items };
         }
 
         public async Task<List<string>> GetSynonymsAsync(long conceptId)
         {
-            var sql = @"
-            SELECT DISTINCT d.term
-            FROM snomed.description d
-            WHERE d.concept_id = @conceptId
-              AND d.active = true
-              AND d.type_id = 900000000000013009
-            ORDER BY d.term;";
-            var conn = GetConnection();
-            return (await conn.QueryAsync<string>(sql, new { conceptId })).ToList();
+            return await _dbContext.Descriptions
+                .Where(d => d.ConceptId == conceptId && d.Active && d.TypeId == 900000000000013009)
+                .Select(d => d.Term)
+                .Distinct()
+                .OrderBy(t => t)
+                .ToListAsync();
         }
 
         public async Task<Dictionary<string, int>> GetSemanticTagStatsAsync()
         {
-            var sql = @"
-            SELECT semantic_tag, COUNT(*) as count
-            FROM snomed.semantic_tag
-            WHERE semantic_tag IN ('finding', 'disorder', 'situation', 'procedure',
-                                   'body structure', 'substance', 'organism',
-                                   'observable entity', 'physical object')
-            GROUP BY semantic_tag
-            ORDER BY count DESC;";
-            var conn = GetConnection();
-            var results = await conn.QueryAsync(sql);
-            return results.ToDictionary(
-                row => (string)row.semantic_tag, 
-                row => (int)(long)row.count // PostgreSQL COUNT returns bigint
-            );
+            var validTags = new[] { "finding", "disorder", "situation", "procedure", "body structure", "substance", "organism", "observable entity", "physical object" };
+            
+            var stats = await _dbContext.SemanticTags
+                .Where(st => validTags.Contains(st.SemanticTag))
+                .GroupBy(st => st.SemanticTag)
+                .Select(g => new { Tag = g.Key, Count = g.Count() })
+                .OrderByDescending(x => x.Count)
+                .ToListAsync();
+
+            return stats.ToDictionary(x => x.Tag, x => x.Count);
         }
 
         public async Task<SnomedSearch.Core.Common.PagedResult<ChiefComplaint>> SearchChiefComplaintsPagedAsync(
@@ -381,19 +377,20 @@ namespace SnomedSearch.Infrastructure.Data
             // I'll implement a paged version of SearchExactWords.
 
             var wordConditions = string.Join(" AND ", words.Select((w, i) => $"d.term ILIKE @word{i}"));
-            var parameters = new DynamicParameters();
-            parameters.Add("query", searchTerm);
-            parameters.Add("queryPrefix", $"{searchTerm}%");
-            parameters.Add("semanticTags", semanticTags);
-            parameters.Add("limit", pageSize);
-            parameters.Add("offset", offset);
+            
+            var npgsqlParams = new List<NpgsqlParameter>();
+            npgsqlParams.Add(new NpgsqlParameter("query", searchTerm));
+            npgsqlParams.Add(new NpgsqlParameter("queryPrefix", $"{searchTerm}%")); // This parameter is not used in the paged query, but kept for consistency if needed elsewhere.
+            npgsqlParams.Add(new NpgsqlParameter("semanticTags", semanticTags.ToArray()));
+            npgsqlParams.Add(new NpgsqlParameter("limit", pageSize));
+            npgsqlParams.Add(new NpgsqlParameter("offset", offset));
 
             for (int i = 0; i < words.Count; i++)
             {
-                parameters.Add($"word{i}", $"%{words[i]}%");
+                npgsqlParams.Add(new NpgsqlParameter($"word{i}", $"%{words[i]}%"));
             }
 
-            string sql = $@"
+            string itemsSql = $@"
             WITH matched_descriptions AS (
                 SELECT
                     d.concept_id,
@@ -416,13 +413,21 @@ namespace SnomedSearch.Infrastructure.Data
             )
             SELECT
                 concept_id AS ConceptId,
-                matched_term AS PreferredTerm,
+                COALESCE(
+                    (SELECT term FROM snomed.description 
+                     WHERE concept_id = ranked_concepts.concept_id 
+                       AND active = true 
+                       AND type_id = 900000000000013009 
+                     ORDER BY LENGTH(term) ASC LIMIT 1),
+                    matched_term
+                ) AS PreferredTerm,
                 semantic_tag AS SemanticTag
             FROM ranked_concepts
             ORDER BY concept_id
-            LIMIT @limit OFFSET @offset;
+            LIMIT @limit OFFSET @offset";
 
-            SELECT COUNT(*) FROM (
+            string countSql = $@"
+            SELECT COUNT(*) AS ""Value"" FROM (
                 SELECT DISTINCT d.concept_id 
                 FROM snomed.description d
                 JOIN snomed.concept c ON d.concept_id = c.concept_id
@@ -431,18 +436,25 @@ namespace SnomedSearch.Infrastructure.Data
                   AND c.active = true
                   AND ({wordConditions})
                   AND st.semantic_tag = ANY(@semanticTags)
-            ) AS total;";
+            ) AS total";
 
-            var conn = GetConnection();
-            using var multi = await conn.QueryMultipleAsync(sql, parameters);
-            var items = (await multi.ReadAsync<ChiefComplaint>()).ToList();
-            var totalCount = await multi.ReadFirstAsync<int>();
+            // EF Core SqlQueryRaw doesn't easily support multiple results sets (QueryMultiple).
+            // We'll execute two queries or just use a single query that returns everything.
+            // For now, I'll execute them separately to keep logic similar.
+
+            var items = await _dbContext.Database
+                .SqlQueryRaw<ChiefComplaint>(itemsSql, npgsqlParams.Select(p => p.Clone()).ToArray())
+                .ToListAsync();
+
+            var totalCount = (int)await _dbContext.Database
+                .SqlQueryRaw<long>(countSql, npgsqlParams.Select(p => p.Clone()).ToArray())
+                .FirstOrDefaultAsync();
 
             // If no exact results, try fuzzy search
             if (!items.Any())
             {
                 float minSimilarity = 0.3f;
-                string fuzzySql = @"
+                string fuzzyItemsSql = @"
                 WITH fuzzy_matches AS (
                     SELECT
                         d.concept_id,
@@ -468,13 +480,21 @@ namespace SnomedSearch.Infrastructure.Data
                 )
                 SELECT
                     concept_id AS ConceptId,
-                    matched_term AS PreferredTerm,
+                    COALESCE(
+                        (SELECT term FROM snomed.description 
+                         WHERE concept_id = ranked_concepts.concept_id 
+                           AND active = true 
+                           AND type_id = 900000000000013009 
+                         ORDER BY LENGTH(term) ASC LIMIT 1),
+                        matched_term
+                    ) AS PreferredTerm,
                     semantic_tag AS SemanticTag
                 FROM ranked_concepts
                 ORDER BY sim_score DESC, concept_id
-                LIMIT @limit OFFSET @offset;
+                LIMIT @limit OFFSET @offset";
 
-                SELECT COUNT(*) FROM (
+                string fuzzyCountSql = @"
+                SELECT COUNT(*) AS ""Value"" FROM (
                     SELECT DISTINCT d.concept_id
                     FROM snomed.description d
                     JOIN snomed.concept c ON d.concept_id = c.concept_id
@@ -483,12 +503,23 @@ namespace SnomedSearch.Infrastructure.Data
                       AND c.active = true
                       AND st.semantic_tag = ANY(@semanticTags)
                       AND d.term % @query
-                ) AS total;";
+                ) AS total";
 
-                var fuzzyParams = new { query = searchTerm, semanticTags, minSimilarity, limit = pageSize, offset };
-                using var fuzzyMulti = await conn.QueryMultipleAsync(fuzzySql, fuzzyParams);
-                items = (await fuzzyMulti.ReadAsync<ChiefComplaint>()).ToList();
-                totalCount = await fuzzyMulti.ReadFirstAsync<int>();
+                var fuzzyParams = new[] {
+                    new NpgsqlParameter("query", searchTerm),
+                    new NpgsqlParameter("semanticTags", semanticTags.ToArray()),
+                    new NpgsqlParameter("minSimilarity", minSimilarity),
+                    new NpgsqlParameter("limit", pageSize),
+                    new NpgsqlParameter("offset", offset)
+                };
+
+                items = await _dbContext.Database
+                    .SqlQueryRaw<ChiefComplaint>(fuzzyItemsSql, fuzzyParams.Select(p => p.Clone()).ToArray())
+                    .ToListAsync();
+                
+                totalCount = (int)await _dbContext.Database
+                    .SqlQueryRaw<long>(fuzzyCountSql, fuzzyParams.Select(p => p.Clone()).ToArray())
+                    .FirstOrDefaultAsync();
             }
 
             return new SnomedSearch.Core.Common.PagedResult<ChiefComplaint>(items, totalCount, page, pageSize);
@@ -496,7 +527,7 @@ namespace SnomedSearch.Infrastructure.Data
 
         public void Dispose()
         {
-            _connection?.Dispose();
+            _dbContext?.Dispose();
         }
     }
 }

@@ -1,11 +1,17 @@
 {
   "version": 2,
-  "dgSpecHash": "nCuyNz85rCg=",
+  "dgSpecHash": "y9m4t/33kkw=",
   "success": true,
   "projectFilePath": "/Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Infrastructure/SnomedSearch.Infrastructure.csproj",
   "expectedPackageFiles": [
     "/Users/reajulislam/.nuget/packages/dapper/2.1.66/dapper.2.1.66.nupkg.sha512",
     "/Users/reajulislam/.nuget/packages/dotenv.net/4.0.1/dotenv.net.4.0.1.nupkg.sha512",
+    "/Users/reajulislam/.nuget/packages/microsoft.entityframeworkcore/10.0.0/microsoft.entityframeworkcore.10.0.0.nupkg.sha512",
+    "/Users/reajulislam/.nuget/packages/microsoft.entityframeworkcore.abstractions/10.0.0/microsoft.entityframeworkcore.abstractions.10.0.0.nupkg.sha512",
+    "/Users/reajulislam/.nuget/packages/microsoft.entityframeworkcore.analyzers/10.0.0/microsoft.entityframeworkcore.analyzers.10.0.0.nupkg.sha512",
+    "/Users/reajulislam/.nuget/packages/microsoft.entityframeworkcore.relational/10.0.0/microsoft.entityframeworkcore.relational.10.0.0.nupkg.sha512",
+    "/Users/reajulislam/.nuget/packages/microsoft.extensions.caching.abstractions/10.0.0/microsoft.extensions.caching.abstractions.10.0.0.nupkg.sha512",
+    "/Users/reajulislam/.nuget/packages/microsoft.extensions.caching.memory/10.0.0/microsoft.extensions.caching.memory.10.0.0.nupkg.sha512",
     "/Users/reajulislam/.nuget/packages/microsoft.extensions.configuration/10.0.3/microsoft.extensions.configuration.10.0.3.nupkg.sha512",
     "/Users/reajulislam/.nuget/packages/microsoft.extensions.configuration.abstractions/10.0.3/microsoft.extensions.configuration.abstractions.10.0.3.nupkg.sha512",
     "/Users/reajulislam/.nuget/packages/microsoft.extensions.configuration.binder/10.0.3/microsoft.extensions.configuration.binder.10.0.3.nupkg.sha512",
@@ -20,6 +26,7 @@
     "/Users/reajulislam/.nuget/packages/microsoft.extensions.options.configurationextensions/10.0.3/microsoft.extensions.options.configurationextensions.10.0.3.nupkg.sha512",
     "/Users/reajulislam/.nuget/packages/microsoft.extensions.primitives/10.0.3/microsoft.extensions.primitives.10.0.3.nupkg.sha512",
     "/Users/reajulislam/.nuget/packages/npgsql/10.0.1/npgsql.10.0.1.nupkg.sha512",
+    "/Users/reajulislam/.nuget/packages/npgsql.entityframeworkcore.postgresql/10.0.0/npgsql.entityframeworkcore.postgresql.10.0.0.nupkg.sha512",
     "/Users/reajulislam/.nuget/packages/system.text.json/10.0.3/system.text.json.10.0.3.nupkg.sha512"
   ],
   "logs": [

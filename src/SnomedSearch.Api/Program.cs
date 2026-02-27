@@ -1,6 +1,4 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+using Microsoft.EntityFrameworkCore;
 using SnomedSearch.Core.Interfaces;
 using SnomedSearch.Infrastructure.Data;
 using SnomedSearch.Infrastructure.Services;
@@ -19,14 +17,17 @@ builder.Services.AddSwaggerGen();
 // Configure SNOMED Repository
 string host = Environment.GetEnvironmentVariable("SNOMED_DB_HOST") ?? "localhost";
 string port = Environment.GetEnvironmentVariable("SNOMED_DB_PORT") ?? "5433";
-string db = Environment.GetEnvironmentVariable("SNOMED_DB_NAME") ?? "****";
-string user = Environment.GetEnvironmentVariable("SNOMED_DB_USER") ?? "***";
-string pass = Environment.GetEnvironmentVariable("SNOMED_DB_PASSWORD") ?? "***";
+string db = Environment.GetEnvironmentVariable("SNOMED_DB_NAME") ?? "niramoy";
+string user = Environment.GetEnvironmentVariable("SNOMED_DB_USER") ?? "niramoy";
+string pass = Environment.GetEnvironmentVariable("SNOMED_DB_PASSWORD") ?? "niramoy";
 
 string connString = $"Host={host};Port={port};Database={db};Username={user};Password={pass};";
 
+builder.Services.AddDbContext<SnomedDbContext>(options =>
+    options.UseNpgsql(connString));
+
 builder.Services.AddScoped<IAIService, MockAnthropicAIService>();
-builder.Services.AddScoped<ISnomedRepository>(sp => new SnomedRepository(connString, sp.GetRequiredService<IAIService>()));
+builder.Services.AddScoped<ISnomedRepository, SnomedRepository>();
 
 var app = builder.Build();
 

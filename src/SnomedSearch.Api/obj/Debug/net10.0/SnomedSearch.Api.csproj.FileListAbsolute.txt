@@ -41,3 +41,8 @@
 /Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Api/obj/Debug/net10.0/SnomedSearch.Api.pdb
 /Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Api/obj/Debug/net10.0/SnomedSearch.Api.genruntimeconfig.cache
 /Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Api/obj/Debug/net10.0/ref/SnomedSearch.Api.dll
+/Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Api/obj/Debug/net10.0/SnomedSearch.Api.sourcelink.json
+/Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Api/bin/Debug/net10.0/Microsoft.EntityFrameworkCore.dll
+/Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Api/bin/Debug/net10.0/Microsoft.EntityFrameworkCore.Abstractions.dll
+/Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Api/bin/Debug/net10.0/Microsoft.EntityFrameworkCore.Relational.dll
+/Users/reajulislam/Work/robin/datamapping/src/SnomedSearch.Api/bin/Debug/net10.0/Npgsql.EntityFrameworkCore.PostgreSQL.dll

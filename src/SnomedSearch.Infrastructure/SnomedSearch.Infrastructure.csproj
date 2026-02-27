@@ -9,6 +9,7 @@
     <PackageReference Include="dotenv.net" Version="4.0.1" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.3" />
     <PackageReference Include="Npgsql" Version="10.0.1" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
     <PackageReference Include="System.Text.Json" Version="10.0.3" />
   </ItemGroup>
 

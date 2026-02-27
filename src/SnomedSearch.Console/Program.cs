@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using dotenv.net;
 using SnomedSearch.Core.Entities;
 using SnomedSearch.Core.Interfaces;
@@ -23,8 +24,12 @@ namespace SnomedSearch.ConsoleApp
 
             string connString = $"Host={host};Port={port};Database={db};Username={user};Password={pass};";
 
+            var optionsBuilder = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<SnomedDbContext>();
+            optionsBuilder.UseNpgsql(connString);
+            using var dbContext = new SnomedDbContext(optionsBuilder.Options);
+
             IAIService aiService = new MockAnthropicAIService();
-            using ISnomedRepository repository = new SnomedRepository(connString, aiService);
+            ISnomedRepository repository = new SnomedRepository(dbContext, aiService);
 
             Console.WriteLine("========================================");
             Console.WriteLine(" SNOMED CT Chief Complaint Search (.NET)");
