@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="SnomedSearch.Api/SnomedSearch.Api.csproj" />
+  <Project Path="SnomedSearch.Console/SnomedSearch.Console.csproj" />
+  <Project Path="SnomedSearch.Core/SnomedSearch.Core.csproj" />
+  <Project Path="SnomedSearch.Infrastructure/SnomedSearch.Infrastructure.csproj" />
+</Solution>
