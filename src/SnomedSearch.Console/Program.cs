@@ -28,8 +28,7 @@ namespace SnomedSearch.ConsoleApp
             optionsBuilder.UseNpgsql(connString);
             using var dbContext = new SnomedDbContext(optionsBuilder.Options);
 
-            IAIService aiService = new MockAnthropicAIService();
-            ISnomedRepository repository = new SnomedRepository(dbContext, aiService);
+            ISnomedRepository repository = new SnomedRepository(dbContext);
 
             Console.WriteLine("========================================");
             Console.WriteLine(" SNOMED CT Chief Complaint Search (.NET)");

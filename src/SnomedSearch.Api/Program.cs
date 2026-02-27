@@ -26,7 +26,6 @@ string connString = $"Host={host};Port={port};Database={db};Username={user};Pass
 builder.Services.AddDbContext<SnomedDbContext>(options =>
     options.UseNpgsql(connString));
 
-builder.Services.AddScoped<IAIService, MockAnthropicAIService>();
 builder.Services.AddScoped<ISnomedRepository, SnomedRepository>();
 
 var app = builder.Build();

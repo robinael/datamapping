@@ -10,8 +10,7 @@ namespace SnomedSearch.Core.Interfaces
         Task<List<ConceptSummary>> SearchChiefComplaintsAsync(
             string query, 
             int limit = 20, 
-            List<string> semanticTags = null, 
-            bool useSemantic = true);
+            List<string> semanticTags = null);
 
         Task<SnomedSearch.Core.Common.PagedResult<ChiefComplaint>> SearchChiefComplaintsPagedAsync(
             string searchTerm, 

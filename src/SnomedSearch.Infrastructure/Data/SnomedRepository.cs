@@ -8,19 +8,16 @@ namespace SnomedSearch.Infrastructure.Data
     public class SnomedRepository : ISnomedRepository
     {
         private readonly SnomedDbContext _dbContext;
-        private readonly IAIService _aiService;
 
-        public SnomedRepository(SnomedDbContext dbContext, IAIService aiService = null)
+        public SnomedRepository(SnomedDbContext dbContext)
         {
             _dbContext = dbContext;
-            _aiService = aiService;
         }
 
         public async Task<List<ConceptSummary>> SearchChiefComplaintsAsync(
             string query, 
             int limit = 20, 
-            List<string> semanticTags = null, 
-            bool useSemantic = true)
+            List<string> semanticTags = null)
         {
             if (string.IsNullOrWhiteSpace(query)) return new List<ConceptSummary>();
 
@@ -38,12 +35,6 @@ namespace SnomedSearch.Infrastructure.Data
             if (!results.Any())
             {
                 results = await SearchFuzzyAsync(query, semanticTags, limit);
-            }
-
-            // 3. Semantic search if still no results and enabled
-            if (!results.Any() && useSemantic && _aiService != null)
-            {
-                results = await SearchSemanticAsync(query, semanticTags, limit);
             }
 
             return results;
@@ -194,33 +185,6 @@ namespace SnomedSearch.Infrastructure.Data
             return await _dbContext.Database
                 .SqlQueryRaw<ConceptSummary>(sql, npgsqlParams)
                 .ToListAsync();
-        }
-
-        private async Task<List<ConceptSummary>> SearchSemanticAsync(
-            string query, 
-            List<string> semanticTags, 
-            int limit)
-        {
-            if (_aiService == null) return new List<ConceptSummary>();
-
-            var clinicalTerms = await _aiService.GetClinicalTermsAsync(query);
-            var allResults = new List<ConceptSummary>();
-            var seenConcepts = new HashSet<long>();
-
-            foreach (var term in clinicalTerms)
-            {
-                var words = term.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
-                var termResults = await SearchExactWordsAsync(term, words, semanticTags, 10);
-                foreach (var r in termResults)
-                {
-                    if (seenConcepts.Add(r.ConceptId))
-                    {
-                        allResults.Add(r);
-                    }
-                }
-            }
-
-            return allResults.Take(limit).ToList();
         }
 
         public async Task<Concept> GetConceptDetailsAsync(long conceptId)
